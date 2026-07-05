@@ -79,6 +79,25 @@ export function TracePanel() {
     }
   };
 
+  const importRightmove = async () => {
+    if (!rm.trim()) return;
+    setBusy(true);
+    try {
+      const src = await fetchRightmoveFloorplan(rm.trim());
+      setTraceImage(await buildTrace(src, 'rightmove'));
+    } catch {
+      // Rightmove commonly blocks automated fetches — guide the manual route.
+      window.alert(
+        "Rightmove blocked the automatic fetch (they usually do). Quick workaround:\n\n" +
+          '1. Open the floorplan image on the Rightmove listing\n' +
+          "2. Right-click it → 'Copy image address'\n" +
+          "3. Paste that into the 'Image URL' box above and click Load",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="cat trace-panel">
       <h3>Trace a floorplan</h3>
@@ -94,10 +113,14 @@ export function TracePanel() {
       </div>
       <div className="trace-row">
         <input placeholder="Rightmove URL…" value={rm} onChange={(e) => setRm(e.target.value)} />
-        <button disabled={busy || !rm.trim()} onClick={() => load(() => fetchRightmoveFloorplan(rm.trim()), 'rightmove')}>
+        <button disabled={busy || !rm.trim()} onClick={importRightmove}>
           Import
         </button>
       </div>
+      <p className="trace-note">
+        Rightmove often blocks auto-fetch. If it does, open the floorplan there, copy its image
+        address, and paste it into <b>Image URL</b> above.
+      </p>
 
       {trace && (
         <div className="trace-controls">

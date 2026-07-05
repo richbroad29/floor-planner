@@ -276,6 +276,12 @@
   margin: 0;
   line-height: 1.4;
 }
+.trace-note {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 4px 0 2px;
+  line-height: 1.4;
+}
 
 /* --- canvas column (floor bar + canvas) --- */
 .canvas-col {
