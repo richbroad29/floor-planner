@@ -70,6 +70,42 @@
   opacity: 0.5;
   cursor: default;
 }
+.auth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+}
+.auth-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.auth-name {
+  font-size: 12px;
+  color: #cbd5e1;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth button {
+  padding: 5px 10px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.auth button.signin {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.auth button:hover {
+  filter: brightness(1.12);
+}
 
 /* --- work area (sidebar + canvas) --- */
 .workarea {

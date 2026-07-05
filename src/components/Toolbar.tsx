@@ -1,5 +1,6 @@
 import { useUIStore } from '../store/uiStore';
 import { ExportMenu } from './ExportMenu';
+import { AuthButton } from './AuthButton';
 
 export function Toolbar() {
   const tool = useUIStore((s) => s.tool);
@@ -34,6 +35,7 @@ export function Toolbar() {
                 : 'Click a wall / door / window to select · drag to move · Delete to remove · Space-drag to pan · scroll to zoom'}
       </span>
       <ExportMenu />
+      <AuthButton />
     </header>
   );
 }

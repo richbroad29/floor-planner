@@ -12,9 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Local verification helper (headless-Chrome screenshot script)
-.shot.mjs
+# Local verification helpers (headless-Chrome screenshot scripts) + local env
+.*.mjs
 .vite-tmp
+.env
+.env.local
 
 # Editor directories and files
 .vscode/*
