@@ -50,7 +50,7 @@ interface EditorState {
   addOpening: (wallId: string, offset: number, type: 'door' | 'window') => void;
   deleteOpenings: (ids: string[]) => void;
   moveOpening: (id: string, offset: number) => void;
-  updateOpening: (id: string, patch: Partial<Pick<Opening, 'width'>>) => void;
+  updateOpening: (id: string, patch: Partial<Pick<Opening, 'width' | 'swing'>>) => void;
 
   // --- furniture / fixtures ---
   addFurniture: (kind: string, x: number, y: number) => void;
@@ -325,6 +325,7 @@ export const usePlanStore = create<EditorState>()(
               o.offset = Math.max(o.width / 2 + 20, Math.min(len - o.width / 2 - 20, o.offset));
             }
           }
+          if (patch.swing !== undefined) o.swing = patch.swing;
           v.updatedAt = nowIso();
           s.project.updatedAt = nowIso();
         }),

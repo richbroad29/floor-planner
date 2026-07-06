@@ -535,7 +535,8 @@ export function Canvas() {
     const { ghost } = opts;
     const sym = ghost ? '#60a5fa' : opts.selected ? '#2563eb' : g.type === 'window' ? '#0ea5e9' : '#475569';
     const jamb = ghost ? '#93c5fd' : '#334155';
-    const dash = ghost ? '5 5' : undefined;
+    // the swing arc is always dotted — it shows the leaf's motion, not a solid edge
+    const arcDash = ghost ? '5 5' : '2 4';
     return (
       <g key={g.id} opacity={ghost ? 0.85 : 1}>
         {!ghost && <polygon points={ptsOf(g.gap)} fill="#ffffff" />}
@@ -560,11 +561,11 @@ export function Canvas() {
         {g.door && (
           <>
             <path
-              d={`M ${g.door.closed.x} ${g.door.closed.y} A ${g.door.r} ${g.door.r} 0 0 0 ${g.door.open.x} ${g.door.open.y}`}
+              d={`M ${g.door.closed.x} ${g.door.closed.y} A ${g.door.r} ${g.door.r} 0 0 ${g.door.sweep} ${g.door.open.x} ${g.door.open.y}`}
               fill="none"
               stroke={sym}
               strokeWidth={1.5}
-              strokeDasharray={dash}
+              strokeDasharray={arcDash}
               vectorEffect="non-scaling-stroke"
             />
             <line

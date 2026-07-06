@@ -177,6 +177,28 @@
   border: 1px solid #cbd5e1;
   border-radius: 5px;
 }
+.sel-panel .seg {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.sel-panel .seg button {
+  padding: 4px 8px;
+  border: none;
+  border-left: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sel-panel .seg button:first-child {
+  border-left: none;
+}
+.sel-panel .seg button.on {
+  background: #2563eb;
+  color: #fff;
+}
 .sel-panel .danger {
   margin-top: 2px;
   padding: 6px;

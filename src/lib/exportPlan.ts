@@ -87,7 +87,7 @@ export function planToSvgString(plan: PlanDocument, opts: ExportOptions = {}): s
     );
     if (g.door) {
       parts.push(
-        `<path d="M ${fmt(g.door.closed.x)} ${fmt(g.door.closed.y)} A ${fmt(g.door.r)} ${fmt(g.door.r)} 0 0 0 ${fmt(g.door.open.x)} ${fmt(g.door.open.y)}" fill="none" stroke="#475569" stroke-width="30"/>`,
+        `<path d="M ${fmt(g.door.closed.x)} ${fmt(g.door.closed.y)} A ${fmt(g.door.r)} ${fmt(g.door.r)} 0 0 ${g.door.sweep} ${fmt(g.door.open.x)} ${fmt(g.door.open.y)}" fill="none" stroke="#475569" stroke-width="30" stroke-dasharray="60 90"/>`,
       );
       parts.push(
         `<line x1="${fmt(g.door.hinge.x)}" y1="${fmt(g.door.hinge.y)}" x2="${fmt(g.door.open.x)}" y2="${fmt(g.door.open.y)}" stroke="#475569" stroke-width="50"/>`,

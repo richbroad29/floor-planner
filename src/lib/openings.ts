@@ -13,7 +13,7 @@ export interface OpeningGeom {
   gap: Point[]; // 4-corner polygon that covers (erases) the wall at the opening
   jamb1: [Point, Point];
   jamb2: [Point, Point];
-  door?: { hinge: Point; open: Point; closed: Point; r: number };
+  door?: { hinge: Point; open: Point; closed: Point; r: number; sweep: number };
   glass?: { a: Point; b: Point };
 }
 
@@ -49,10 +49,28 @@ export function openingGeom(
   const jamb2: [Point, Point] = [pt(-1, 1, htExact), pt(-1, -1, htExact)];
 
   if (o.type === 'door') {
-    const hinge = { x: c.x - dx * hw, y: c.y - dy * hw };
-    const closed = { x: c.x + dx * hw, y: c.y + dy * hw };
-    const open = { x: hinge.x + nx * o.width, y: hinge.y + ny * o.width };
-    return { id: o.id, type: 'door', center: c, gap, jamb1, jamb2, door: { hinge, open, closed, r: o.width } };
+    // `swing` picks the hinge end (left/right = which jamb the leaf is fixed to,
+    // measured along the wall a->b) and the face the leaf swings across
+    // (in/out = which side of the wall's normal).
+    const swing = o.swing ?? 'left-in';
+    const hingeSign = swing.startsWith('left') ? -1 : 1; // along the wall
+    const swingSign = swing.endsWith('in') ? 1 : -1; // across the wall (normal)
+    const hinge = { x: c.x + dx * hw * hingeSign, y: c.y + dy * hw * hingeSign };
+    const closed = { x: c.x - dx * hw * hingeSign, y: c.y - dy * hw * hingeSign };
+    const open = { x: hinge.x + nx * o.width * swingSign, y: hinge.y + ny * o.width * swingSign };
+    // Choose the SVG arc sweep so the quarter-circle is centred on the hinge and
+    // bulges away from it — i.e. it traces the leaf's true swept outer edge.
+    const cross = (closed.x - hinge.x) * (open.y - hinge.y) - (closed.y - hinge.y) * (open.x - hinge.x);
+    const sweep = cross > 0 ? 1 : 0;
+    return {
+      id: o.id,
+      type: 'door',
+      center: c,
+      gap,
+      jamb1,
+      jamb2,
+      door: { hinge, open, closed, r: o.width, sweep },
+    };
   }
   const glass = {
     a: { x: c.x - dx * hw, y: c.y - dy * hw },

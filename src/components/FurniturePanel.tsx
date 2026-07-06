@@ -6,6 +6,7 @@ import { useUIStore } from '../store/uiStore';
 import { dist } from '../lib/geometry';
 import { formatLength } from '../lib/units';
 import { TracePanel } from './TracePanel';
+import type { DoorSwing } from '../types/plan';
 
 export function FurniturePanel() {
   const addFurniture = usePlanStore((s) => s.addFurniture);
@@ -88,6 +89,40 @@ export function FurniturePanel() {
               onChange={(e) => updateOpening(selOpening.id, { width: Number(e.target.value) })}
             />
           </label>
+          {selOpening.type === 'door' &&
+            (() => {
+              const swing: DoorSwing = selOpening.swing ?? 'left-in';
+              const side = swing.startsWith('left') ? 'left' : 'right';
+              const dir = swing.endsWith('in') ? 'in' : 'out';
+              const setSwing = (s: 'left' | 'right', d: 'in' | 'out') =>
+                updateOpening(selOpening.id, { swing: `${s}-${d}` as DoorSwing });
+              return (
+                <>
+                  <label>
+                    Hinge side
+                    <span className="seg">
+                      <button className={side === 'left' ? 'on' : ''} onClick={() => setSwing('left', dir)}>
+                        Left
+                      </button>
+                      <button className={side === 'right' ? 'on' : ''} onClick={() => setSwing('right', dir)}>
+                        Right
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    Opens
+                    <span className="seg">
+                      <button className={dir === 'in' ? 'on' : ''} onClick={() => setSwing(side, 'in')}>
+                        This side
+                      </button>
+                      <button className={dir === 'out' ? 'on' : ''} onClick={() => setSwing(side, 'out')}>
+                        Other side
+                      </button>
+                    </span>
+                  </label>
+                </>
+              );
+            })()}
           <button
             className="danger"
             onClick={() => {
