@@ -13,6 +13,8 @@ export function FurniturePanel() {
   const deleteFurniture = usePlanStore((s) => s.deleteFurniture);
   const deleteWalls = usePlanStore((s) => s.deleteWalls);
   const updateWall = usePlanStore((s) => s.updateWall);
+  const deleteOpenings = usePlanStore((s) => s.deleteOpenings);
+  const updateOpening = usePlanStore((s) => s.updateOpening);
   const plan = usePlanStore((s) => {
     const p = s.project;
     return p.versions.find((v) => v.id === p.activeVersionId)?.plan;
@@ -22,6 +24,8 @@ export function FurniturePanel() {
   const setSelectedFurniture = useUIStore((s) => s.setSelectedFurniture);
   const selWallIds = useUIStore((s) => s.selectedWallIds);
   const setSelectedWalls = useUIStore((s) => s.setSelectedWalls);
+  const selOpeningIds = useUIStore((s) => s.selectedOpeningIds);
+  const setSelectedOpenings = useUIStore((s) => s.setSelectedOpenings);
   const selected = furniture.find((f) => selIds.includes(f.id));
 
   // the currently selected wall (if any), plus its centreline length for display
@@ -30,6 +34,9 @@ export function FurniturePanel() {
   const wallB = selWall && plan?.nodes.find((n) => n.id === selWall.b);
   const wallLen = wallA && wallB ? dist(wallA, wallB) : 0;
   const unit = plan?.units.displayUnit ?? 'm';
+
+  // the currently selected door / window (if any)
+  const selOpening = plan?.openings.find((o) => selOpeningIds.includes(o.id));
 
   const add = (kind: string) => {
     // drop the new item at the centre of the current view
@@ -65,6 +72,30 @@ export function FurniturePanel() {
             }}
           >
             Delete wall
+          </button>
+        </div>
+      )}
+
+      {selOpening && (
+        <div className="sel-panel">
+          <div className="sel-title">{selOpening.type === 'door' ? 'Door' : 'Window'}</div>
+          <label>
+            Width (mm)
+            <input
+              type="number"
+              step={10}
+              value={Math.round(selOpening.width)}
+              onChange={(e) => updateOpening(selOpening.id, { width: Number(e.target.value) })}
+            />
+          </label>
+          <button
+            className="danger"
+            onClick={() => {
+              deleteOpenings([selOpening.id]);
+              setSelectedOpenings([]);
+            }}
+          >
+            Delete {selOpening.type === 'door' ? 'door' : 'window'}
           </button>
         </div>
       )}

@@ -50,6 +50,7 @@ interface EditorState {
   addOpening: (wallId: string, offset: number, type: 'door' | 'window') => void;
   deleteOpenings: (ids: string[]) => void;
   moveOpening: (id: string, offset: number) => void;
+  updateOpening: (id: string, patch: Partial<Pick<Opening, 'width'>>) => void;
 
   // --- furniture / fixtures ---
   addFurniture: (kind: string, x: number, y: number) => void;
@@ -301,6 +302,29 @@ export const usePlanStore = create<EditorState>()(
           if (!a || !b) return;
           const len = Math.hypot(b.x - a.x, b.y - a.y);
           o.offset = Math.max(o.width / 2 + 20, Math.min(len - o.width / 2 - 20, offset));
+          v.updatedAt = nowIso();
+          s.project.updatedAt = nowIso();
+        }),
+
+      updateOpening: (id, patch) =>
+        set((s) => {
+          const v = s.project.versions.find((z) => z.id === s.project.activeVersionId);
+          if (!v) return;
+          const o = v.plan.openings.find((x) => x.id === id);
+          if (!o) return;
+          if (patch.width !== undefined) {
+            const w = v.plan.walls.find((x) => x.id === o.wallId);
+            const a = w && v.plan.nodes.find((n) => n.id === w.a);
+            const b = w && v.plan.nodes.find((n) => n.id === w.b);
+            const len = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : Infinity;
+            // at least 200mm, and small enough to leave a 20mm jamb each side of the wall
+            const maxWidth = Math.max(200, len - 40);
+            o.width = Math.max(200, Math.min(maxWidth, patch.width));
+            // re-clamp the centre so the resized opening still sits within the wall
+            if (Number.isFinite(len)) {
+              o.offset = Math.max(o.width / 2 + 20, Math.min(len - o.width / 2 - 20, o.offset));
+            }
+          }
           v.updatedAt = nowIso();
           s.project.updatedAt = nowIso();
         }),
