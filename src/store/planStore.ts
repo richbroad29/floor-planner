@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import type { PlanDocument, Project, PlanVersion, Opening, FurnitureItem, TraceImage } from '../types/plan';
+import type { PlanDocument, Project, PlanVersion, Opening, Wall, FurnitureItem, TraceImage } from '../types/plan';
 import { createProject, createVersion, createBlankPlan } from '../lib/factory';
 import { catalogueByKind } from '../lib/catalogue';
 import { newId, nowIso } from '../lib/id';
@@ -41,6 +41,7 @@ interface EditorState {
   /** commit a chain of world points as walls, reusing existing nodes when close */
   addWallChain: (points: { x: number; y: number }[], closed: boolean) => void;
   deleteWalls: (ids: string[]) => void;
+  updateWall: (id: string, patch: Partial<Pick<Wall, 'thickness'>>) => void;
   moveNode: (id: string, x: number, y: number) => void;
   /** name an auto-detected room by its node-set signature (empty clears it) */
   setRoomName: (signature: string, name: string) => void;
@@ -215,6 +216,17 @@ export const usePlanStore = create<EditorState>()(
             used.add(w.b);
           });
           plan.nodes = plan.nodes.filter((n) => used.has(n.id));
+          v.updatedAt = nowIso();
+          s.project.updatedAt = nowIso();
+        }),
+
+      updateWall: (id, patch) =>
+        set((s) => {
+          const v = s.project.versions.find((x) => x.id === s.project.activeVersionId);
+          if (!v) return;
+          const w = v.plan.walls.find((x) => x.id === id);
+          if (!w) return;
+          if (patch.thickness !== undefined) w.thickness = Math.max(20, patch.thickness);
           v.updatedAt = nowIso();
           s.project.updatedAt = nowIso();
         }),
