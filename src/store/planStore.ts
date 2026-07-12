@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import type { PlanDocument, Project, PlanVersion, Opening, Wall, FurnitureItem, TraceImage } from '../types/plan';
+import type { PlanDocument, Project, PlanVersion, Opening, Wall, FurnitureItem, TraceImage, ClipboardData } from '../types/plan';
 import { createProject, createVersion, createBlankPlan } from '../lib/factory';
 import { catalogueByKind } from '../lib/catalogue';
 import { newId, nowIso } from '../lib/id';
@@ -36,6 +36,14 @@ interface EditorState {
 
   // --- plan editing ---
   updatePlan: (recipe: (plan: PlanDocument) => void) => void;
+
+  // --- clipboard ---
+  /** paste a clipboard snapshot onto the active floor, offset by (dx, dy); returns the new ids */
+  pasteItems: (
+    data: ClipboardData,
+    dx: number,
+    dy: number,
+  ) => { wallIds: string[]; openingIds: string[]; furnitureIds: string[] };
 
   // --- geometry ---
   /** commit a chain of world points as walls, reusing existing nodes when close */
@@ -166,6 +174,54 @@ export const usePlanStore = create<EditorState>()(
           v.updatedAt = nowIso();
           s.project.updatedAt = nowIso();
         }),
+
+      pasteItems: (data, dx, dy) => {
+        const wallIds: string[] = [];
+        const openingIds: string[] = [];
+        const furnitureIds: string[] = [];
+        set((s) => {
+          const v = s.project.versions.find((x) => x.id === s.project.activeVersionId);
+          if (!v) return;
+          const plan = v.plan;
+          const floor = plan.activeFloor;
+
+          // fresh node ids on the active floor, shifted by the paste offset
+          const nodeIdMap = new Map<string, string>();
+          for (const n of data.nodes) {
+            const nid = newId();
+            nodeIdMap.set(n.id, nid);
+            plan.nodes.push({ id: nid, floor, x: n.x + dx, y: n.y + dy });
+          }
+          // walls remapped onto the new nodes
+          const wallIdMap = new Map<string, string>();
+          for (const w of data.walls) {
+            const a = nodeIdMap.get(w.a);
+            const b = nodeIdMap.get(w.b);
+            if (!a || !b) continue;
+            const wid = newId();
+            wallIdMap.set(w.id, wid);
+            plan.walls.push({ id: wid, a, b, thickness: w.thickness });
+            wallIds.push(wid);
+          }
+          // openings re-hosted on the pasted walls
+          for (const o of data.openings) {
+            const wid = wallIdMap.get(o.wallId);
+            if (!wid) continue;
+            const oid = newId();
+            plan.openings.push({ ...o, id: oid, wallId: wid });
+            openingIds.push(oid);
+          }
+          // furniture, offset and onto the active floor
+          for (const f of data.furniture) {
+            const fid = newId();
+            plan.furniture.push({ ...f, id: fid, floor, x: f.x + dx, y: f.y + dy });
+            furnitureIds.push(fid);
+          }
+          v.updatedAt = nowIso();
+          s.project.updatedAt = nowIso();
+        });
+        return { wallIds, openingIds, furnitureIds };
+      },
 
       addWallChain: (points, closed) =>
         set((s) => {

@@ -3,6 +3,7 @@
 // NOT part of the plan document / undo history.
 import { create } from 'zustand';
 import type { Point } from '../lib/geometry';
+import type { ClipboardData } from '../types/plan';
 
 export type Tool = 'select' | 'wall' | 'door' | 'window' | 'scale';
 
@@ -30,6 +31,8 @@ interface UIState {
   size: { w: number; h: number };
   /** first point of the scale-calibration line (world mm), or null */
   calibStart: Point | null;
+  /** copied/cut items awaiting paste, or null */
+  clipboard: ClipboardData | null;
 
   setTool: (t: Tool) => void;
   setViewport: (vp: Viewport) => void;
@@ -47,6 +50,8 @@ interface UIState {
   setSize: (w: number, h: number) => void;
   clearSelection: () => void;
   setCalibStart: (p: Point | null) => void;
+  /** stash a selection for paste */
+  setClipboard: (c: ClipboardData | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -59,6 +64,7 @@ export const useUIStore = create<UIState>((set) => ({
   selectedFurnitureIds: [],
   size: { w: 800, h: 600 },
   calibStart: null,
+  clipboard: null,
 
   setTool: (t) =>
     set({
@@ -95,4 +101,5 @@ export const useUIStore = create<UIState>((set) => ({
   clearSelection: () =>
     set({ selectedWallIds: [], selectedOpeningIds: [], selectedFurnitureIds: [], draft: null }),
   setCalibStart: (p) => set({ calibStart: p }),
+  setClipboard: (c) => set({ clipboard: c }),
 }));

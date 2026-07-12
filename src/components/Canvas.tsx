@@ -10,19 +10,140 @@ import {
   dist,
   distPointToSegment,
   midpoint,
+  pointInRect,
   projectPointToSegment,
+  rectFromPoints,
   screenToWorld,
+  segmentIntersectsRect,
   snapToGrid,
   worldToScreen,
   type Point,
+  type Rect,
 } from '../lib/geometry';
 import { formatArea, formatLength } from '../lib/units';
 import { detectRooms } from '../lib/rooms';
 import { computeOpenings, openingGeom, type OpeningGeom } from '../lib/openings';
-import type { Opening, FurnitureItem, TraceImage } from '../types/plan';
+import type { Opening, FurnitureItem, TraceImage, ClipboardData } from '../types/plan';
 import { catalogueByKind } from '../lib/catalogue';
 
 const OPENING_WALL_TOL_PX = 40; // how close to a wall a click/hover counts
+
+/** top-left (min x, min y) of a clipboard's contents, in world mm — used to
+ *  drop the paste so its top-left lands under the mouse. */
+function clipboardTopLeft(data: ClipboardData): Point | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  for (const n of data.nodes) {
+    if (n.x < minX) minX = n.x;
+    if (n.y < minY) minY = n.y;
+  }
+  for (const f of data.furniture) {
+    const rad = (f.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const hw = f.w / 2;
+    const hh = f.h / 2;
+    for (const [sx, sy] of [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ] as const) {
+      const x = f.x + sx * cos - sy * sin;
+      const y = f.y + sx * sin + sy * cos;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return { x: minX, y: minY };
+}
+
+/** does a (rotated) furniture footprint's bounding box overlap rect r? */
+function furnitureIntersectsRect(f: FurnitureItem, r: Rect): boolean {
+  const rad = (f.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const hw = f.w / 2;
+  const hh = f.h / 2;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [sx, sy] of [
+    [-hw, -hh],
+    [hw, -hh],
+    [hw, hh],
+    [-hw, hh],
+  ] as const) {
+    const x = f.x + sx * cos - sy * sin;
+    const y = f.y + sx * sin + sy * cos;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return minX <= r.maxX && maxX >= r.minX && minY <= r.maxY && maxY >= r.minY;
+}
+
+/** all active-floor walls / openings / furniture touched by a marquee rect */
+function collectInRect(
+  plan: PlanDocument,
+  rect: Rect,
+): { wallIds: string[]; openingIds: string[]; furnitureIds: string[] } {
+  const floor = plan.activeFloor;
+  const wallIds: string[] = [];
+  for (const w of plan.walls) {
+    const a = plan.nodes.find((n) => n.id === w.a);
+    const b = plan.nodes.find((n) => n.id === w.b);
+    if (!a || !b || a.floor !== floor) continue;
+    if (segmentIntersectsRect(a, b, rect)) wallIds.push(w.id);
+  }
+  const openingIds: string[] = [];
+  for (const o of plan.openings) {
+    const w = plan.walls.find((x) => x.id === o.wallId);
+    if (!w) continue;
+    const a = plan.nodes.find((n) => n.id === w.a);
+    const b = plan.nodes.find((n) => n.id === w.b);
+    if (!a || !b || a.floor !== floor) continue;
+    const len = dist(a, b);
+    if (len === 0) continue;
+    const cx = a.x + ((b.x - a.x) * o.offset) / len;
+    const cy = a.y + ((b.y - a.y) * o.offset) / len;
+    if (pointInRect({ x: cx, y: cy }, rect)) openingIds.push(o.id);
+  }
+  const furnitureIds: string[] = [];
+  for (const f of plan.furniture) {
+    if (f.floor !== floor) continue;
+    if (furnitureIntersectsRect(f, rect)) furnitureIds.push(f.id);
+  }
+  return { wallIds, openingIds, furnitureIds };
+}
+
+/** build a self-contained clipboard from the selected walls + furniture.
+ *  Walls carry their nodes and every opening hosted on them; openings whose
+ *  host wall isn't selected can't be copied (they have nowhere to live). */
+function buildClipboard(
+  plan: PlanDocument,
+  wallIds: string[],
+  furnitureIds: string[],
+): ClipboardData | null {
+  const wallSet = new Set(wallIds);
+  const walls = plan.walls
+    .filter((w) => wallSet.has(w.id))
+    .map((w) => ({ id: w.id, a: w.a, b: w.b, thickness: w.thickness }));
+  const nodeIds = new Set<string>();
+  walls.forEach((w) => {
+    nodeIds.add(w.a);
+    nodeIds.add(w.b);
+  });
+  const nodes = plan.nodes.filter((n) => nodeIds.has(n.id)).map((n) => ({ id: n.id, x: n.x, y: n.y }));
+  const openings = plan.openings.filter((o) => wallSet.has(o.wallId)).map((o) => ({ ...o }));
+  const furnitureSet = new Set(furnitureIds);
+  const furniture = plan.furniture.filter((f) => furnitureSet.has(f.id)).map((f) => ({ ...f }));
+  if (!walls.length && !furniture.length) return null;
+  return { nodes, walls, openings, furniture };
+}
 
 /** find the wall nearest to a world point (within tol mm) and the offset along it */
 function nearestWall(
@@ -107,6 +228,18 @@ export function Canvas() {
   const traceDrag = useRef<{ gx: number; gy: number } | null>(null);
   const spaceHeld = useRef(false);
 
+  // last pointer position over the canvas (svg-relative screen px), for paste-at-mouse
+  const pointerScreen = useRef<Point | null>(null);
+
+  // marquee (rubber-band) selection, in world coords
+  const marqueeStart = useRef<Point | null>(null);
+  const marqueeRectRef = useRef<Rect | null>(null);
+  const [marquee, setMarqueeState] = useState<Rect | null>(null);
+  const setMarquee = useCallback((r: Rect | null) => {
+    marqueeRectRef.current = r;
+    setMarqueeState(r);
+  }, []);
+
   // reactive slices for rendering
   const plan = usePlanStore((s) => s.project.versions.find((v) => v.id === s.project.activeVersionId)?.plan);
   const viewport = useUIStore((s) => s.viewport);
@@ -145,6 +278,7 @@ export function Canvas() {
     deleteFurniture,
     moveTraceImage,
     setTraceScale,
+    pasteItems,
   } = usePlanStore.getState();
 
   // keep the SVG sized to its container
@@ -172,6 +306,7 @@ export function Canvas() {
       if (!p) return;
       svgRef.current?.setPointerCapture(e.pointerId);
       const screen = screenPoint(e.clientX, e.clientY);
+      pointerScreen.current = screen;
       const vp = useUIStore.getState().viewport;
 
       // pan: middle button, or space + left
@@ -309,9 +444,10 @@ export function Canvas() {
         setSelectedFurniture([]);
         return;
       }
-      setSelectedWalls([]);
-      setSelectedOpenings([]);
-      setSelectedFurniture([]);
+      // nothing hit — begin a marquee. A plain click ends as a zero-area rect,
+      // which selects nothing and so clears the selection on pointer-up.
+      marqueeStart.current = world;
+      setMarquee(rectFromPoints(world, world));
     },
     [
       screenPoint,
@@ -325,6 +461,7 @@ export function Canvas() {
       setSelectedWalls,
       setSelectedOpenings,
       setSelectedFurniture,
+      setMarquee,
     ],
   );
 
@@ -338,6 +475,7 @@ export function Canvas() {
         return;
       }
       const screen = screenPoint(e.clientX, e.clientY);
+      pointerScreen.current = screen;
       const vp = useUIStore.getState().viewport;
       if (nodeDrag.current) {
         const snap = computeSnap(screen, vp, p, null);
@@ -373,6 +511,11 @@ export function Canvas() {
         moveTraceImage(world.x - traceDrag.current.gx, world.y - traceDrag.current.gy);
         return;
       }
+      if (marqueeStart.current) {
+        const world = screenToWorld(screen, vp);
+        setMarquee(rectFromPoints(marqueeStart.current, world));
+        return;
+      }
       const t = useUIStore.getState().tool;
       if (t === 'door' || t === 'window' || t === 'scale') {
         setCursor(screenToWorld(screen, vp)); // raw: preview projects onto the wall / trace
@@ -381,21 +524,37 @@ export function Canvas() {
       const d = useUIStore.getState().draft;
       setCursor(computeSnap(screen, vp, p, d));
     },
-    [screenPoint, panBy, moveNode, moveOpening, moveFurniture, moveTraceImage, setCursor],
+    [screenPoint, panBy, moveNode, moveOpening, moveFurniture, moveTraceImage, setCursor, setMarquee],
   );
 
-  const onPointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    panning.current = null;
-    nodeDrag.current = null;
-    openingDrag.current = null;
-    furnitureDrag.current = null;
-    traceDrag.current = null;
-    try {
-      svgRef.current?.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      // finish a marquee: select everything it touched (empty rect => deselect)
+      if (marqueeStart.current) {
+        const p = activePlan();
+        const rect = marqueeRectRef.current;
+        if (p && rect) {
+          const sel = collectInRect(p, rect);
+          setSelectedWalls(sel.wallIds);
+          setSelectedOpenings(sel.openingIds);
+          setSelectedFurniture(sel.furnitureIds);
+        }
+        marqueeStart.current = null;
+        setMarquee(null);
+      }
+      panning.current = null;
+      nodeDrag.current = null;
+      openingDrag.current = null;
+      furnitureDrag.current = null;
+      traceDrag.current = null;
+      try {
+        svgRef.current?.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    [setMarquee, setSelectedWalls, setSelectedOpenings, setSelectedFurniture],
+  );
 
   const onDoubleClick = useCallback(() => {
     const d = useUIStore.getState().draft;
@@ -428,6 +587,48 @@ export function Canvas() {
         spaceHeld.current = true;
         return;
       }
+
+      // Cmd/Ctrl + C / X / V — copy, cut, paste the current selection
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod) {
+        const k = e.key.toLowerCase();
+        if (k === 'c' || k === 'x') {
+          const cur = activePlan();
+          if (!cur) return;
+          const ui = useUIStore.getState();
+          const data = buildClipboard(cur, ui.selectedWallIds, ui.selectedFurnitureIds);
+          if (!data) return; // nothing copyable — let the browser keep the key
+          ui.setClipboard(data);
+          if (k === 'x') {
+            if (ui.selectedWallIds.length) deleteWalls(ui.selectedWallIds);
+            if (ui.selectedFurnitureIds.length) deleteFurniture(ui.selectedFurnitureIds);
+            ui.clearSelection();
+          }
+          e.preventDefault();
+          return;
+        }
+        if (k === 'v') {
+          const ui = useUIStore.getState();
+          const data = ui.clipboard;
+          if (!data) return;
+          const tl = clipboardTopLeft(data);
+          if (!tl) return;
+          // drop the paste so its top-left sits under the mouse (fallback: view centre)
+          const scr = pointerScreen.current ?? { x: ui.size.w / 2, y: ui.size.h / 2 };
+          let target = screenToWorld(scr, ui.viewport);
+          const cur = activePlan(); // paste onto whichever floor is active now (cross-floor OK)
+          if (cur?.grid.snap) target = snapToGrid(target, cur.grid.size);
+          const res = pasteItems(data, target.x - tl.x, target.y - tl.y);
+          ui.setTool('select'); // pasted items land ready to drag (also clears old selection)
+          ui.setSelectedWalls(res.wallIds);
+          ui.setSelectedOpenings(res.openingIds);
+          ui.setSelectedFurniture(res.furnitureIds);
+          e.preventDefault();
+          return;
+        }
+        return; // other Cmd/Ctrl combos pass through to the browser
+      }
+
       if (e.key === 'v' || e.key === 'V') {
         useUIStore.getState().setTool('select');
         return;
@@ -492,6 +693,7 @@ export function Canvas() {
     deleteOpenings,
     deleteFurniture,
     updateFurniture,
+    pasteItems,
     setSelectedWalls,
     setSelectedOpenings,
     setSelectedFurniture,
@@ -814,6 +1016,21 @@ export function Canvas() {
               y2={cursor.y}
               stroke="#e11d48"
               strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* marquee (rubber-band) selection box */}
+          {marquee && (
+            <rect
+              x={marquee.minX}
+              y={marquee.minY}
+              width={marquee.maxX - marquee.minX}
+              height={marquee.maxY - marquee.minY}
+              fill="rgba(37,99,235,0.08)"
+              stroke="#2563eb"
+              strokeWidth={1.5}
+              strokeDasharray="6 4"
               vectorEffect="non-scaling-stroke"
             />
           )}

@@ -145,6 +145,16 @@ export interface PlanDocument {
   roomNames?: Record<string, string>;
 }
 
+/** A self-contained snapshot of a selection, held in memory for copy/cut/paste.
+ *  Ids are the originals — paste remaps them to fresh ids. Walls carry their own
+ *  nodes; openings reference the copied walls; furniture keeps absolute coords. */
+export interface ClipboardData {
+  nodes: { id: Id; x: number; y: number }[];
+  walls: Pick<Wall, 'id' | 'a' | 'b' | 'thickness'>[];
+  openings: Opening[];
+  furniture: FurnitureItem[];
+}
+
 // ---- Project / version wrappers (Rich's "save different options" feature) ----
 
 /** A named layout option within a project (e.g. "Keep the wall" vs "Open-plan"). */

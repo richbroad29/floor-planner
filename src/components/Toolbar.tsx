@@ -32,7 +32,7 @@ export function Toolbar() {
               ? 'Click on a wall to drop a window'
               : tool === 'scale'
                 ? 'Scale: click the two ends of a known length on the image, then type its real size'
-                : 'Click a wall / door / window to select · drag to move · Delete to remove · Space-drag to pan · scroll to zoom'}
+                : 'Click to select · drag over empty space to box-select · ⌘C/⌘X/⌘V to copy/cut/paste · drag to move · Delete to remove · Space-drag to pan'}
       </span>
       <ExportMenu />
       <AuthButton />
