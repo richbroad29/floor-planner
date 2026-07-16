@@ -59,12 +59,17 @@ export const rectFromPoints = (a: Point, b: Point): Rect => ({
 export const pointInRect = (p: Point, r: Rect): boolean =>
   p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
 
+/** Signed area of triangle abc; its sign says which side of line ab point c is on. */
 const ccw = (a: Point, b: Point, c: Point): number =>
   (c.y - a.y) * (b.x - a.x) - (b.y - a.y) * (c.x - a.x);
 
-/** Do open segments ab and cd properly cross? */
+/** Do segments ab and cd cross? True when c,d straddle line ab AND a,b straddle
+ *  line cd — i.e. the orientation signs differ on each side. (Comparing the raw
+ *  ccw values instead of their signs matches nearly always, which would make a
+ *  marquee select every wall on the canvas.) */
 const segmentsCross = (a: Point, b: Point, c: Point, d: Point): boolean =>
-  ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+  Math.sign(ccw(a, c, d)) !== Math.sign(ccw(b, c, d)) &&
+  Math.sign(ccw(a, b, c)) !== Math.sign(ccw(a, b, d));
 
 /** True if segment ab touches rect r (either endpoint inside, or it crosses an edge). */
 export function segmentIntersectsRect(a: Point, b: Point, r: Rect): boolean {
