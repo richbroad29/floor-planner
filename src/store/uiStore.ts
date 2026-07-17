@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import type { Point } from '../lib/geometry';
 import type { ClipboardData } from '../types/plan';
 
-export type Tool = 'select' | 'wall' | 'door' | 'window' | 'scale';
+export type Tool = 'select' | 'pan' | 'wall' | 'door' | 'window' | 'scale';
 
 export interface Viewport {
   /** CSS pixels per millimetre */

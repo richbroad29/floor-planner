@@ -13,6 +13,9 @@ export function Toolbar() {
         <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')} title="Select (V)">
           Select
         </button>
+        <button className={tool === 'pan' ? 'active' : ''} onClick={() => setTool('pan')} title="Pan — drag the canvas (H)">
+          Pan
+        </button>
         <button className={tool === 'wall' ? 'active' : ''} onClick={() => setTool('wall')} title="Draw walls (W)">
           Wall
         </button>
@@ -26,13 +29,15 @@ export function Toolbar() {
       <span className="hint">
         {tool === 'wall'
           ? 'Click to place points · click the green start dot to close the room · Enter to finish · Esc to cancel'
-          : tool === 'door'
-            ? 'Click on a wall to drop a door — it cuts the opening and slides along the wall'
-            : tool === 'window'
-              ? 'Click on a wall to drop a window'
-              : tool === 'scale'
-                ? 'Scale: click the two ends of a known length on the image, then type its real size'
-                : 'Click to select · drag over empty space to box-select · ⌘C/⌘X/⌘V to copy/cut/paste · drag to move · Delete to remove · Space-drag to pan'}
+          : tool === 'pan'
+            ? 'Drag anywhere to move around the canvas · scroll to zoom'
+            : tool === 'door'
+              ? 'Click on a wall to drop a door — it cuts the opening and slides along the wall'
+              : tool === 'window'
+                ? 'Click on a wall to drop a window'
+                : tool === 'scale'
+                  ? 'Scale: click the two ends of a known length on the image, then type its real size'
+                  : 'Click to select · drag empty space to box-select · drag a selection to move it together · ⌘C/⌘X/⌘V to copy/cut/paste · ⌘/Ctrl-drag or Space-drag to pan · Delete to remove'}
       </span>
       <ExportMenu />
       <AuthButton />

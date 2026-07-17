@@ -51,6 +51,12 @@ interface EditorState {
   deleteWalls: (ids: string[]) => void;
   updateWall: (id: string, patch: Partial<Pick<Wall, 'thickness'>>) => void;
   moveNode: (id: string, x: number, y: number) => void;
+  /** move many nodes and furniture items to absolute positions in one update
+   *  (used to drag a multi-selection as a rigid group) */
+  moveMany: (
+    nodes: { id: string; x: number; y: number }[],
+    furniture: { id: string; x: number; y: number }[],
+  ) => void;
   /** name an auto-detected room by its node-set signature (empty clears it) */
   setRoomName: (signature: string, name: string) => void;
 
@@ -296,6 +302,34 @@ export const usePlanStore = create<EditorState>()(
           if (!n) return;
           n.x = x;
           n.y = y;
+          v.updatedAt = nowIso();
+          s.project.updatedAt = nowIso();
+        }),
+
+      moveMany: (nodes, furniture) =>
+        set((s) => {
+          const v = s.project.versions.find((z) => z.id === s.project.activeVersionId);
+          if (!v) return;
+          if (nodes.length) {
+            const byId = new Map(v.plan.nodes.map((n) => [n.id, n]));
+            for (const np of nodes) {
+              const n = byId.get(np.id);
+              if (n) {
+                n.x = np.x;
+                n.y = np.y;
+              }
+            }
+          }
+          if (furniture.length) {
+            const byId = new Map(v.plan.furniture.map((f) => [f.id, f]));
+            for (const fp of furniture) {
+              const f = byId.get(fp.id);
+              if (f) {
+                f.x = fp.x;
+                f.y = fp.y;
+              }
+            }
+          }
           v.updatedAt = nowIso();
           s.project.updatedAt = nowIso();
         }),

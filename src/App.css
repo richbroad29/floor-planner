@@ -47,28 +47,51 @@
   text-align: right;
 }
 .export {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
-.export-label {
-  font-size: 12px;
-  color: #94a3b8;
-}
-.export button {
-  padding: 5px 10px;
+.export-toggle {
+  padding: 5px 12px;
   border: 1px solid #334155;
   background: #1e293b;
   color: #e2e8f0;
   border-radius: 6px;
   cursor: pointer;
 }
-.export button:hover:not(:disabled) {
+.export-toggle:hover:not(:disabled) {
   background: #334155;
 }
-.export button:disabled {
+.export-toggle:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+.export-menu button {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  text-align: left;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.export-menu button:hover {
+  background: #334155;
 }
 .auth {
   display: flex;
@@ -379,6 +402,12 @@
 }
 .canvas.tool-wall {
   cursor: crosshair;
+}
+.canvas.tool-pan {
+  cursor: grab;
+}
+.canvas.tool-pan:active {
+  cursor: grabbing;
 }
 .grid-line {
   stroke: #e5e7eb;

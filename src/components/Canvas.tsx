@@ -1,6 +1,7 @@
 // The 2D drawing surface: an SVG with a world->screen transform group.
-// Handles pan (space-drag / middle-drag), wheel zoom, the wall tool
-// (click-to-place polyline with snapping + close-loop) and basic selection.
+// Handles pan (pan tool / ⌘|Ctrl-drag / space-drag / middle-drag), wheel zoom,
+// the wall tool (click-to-place polyline with snapping + close-loop), selection,
+// and dragging a multi-selection as a rigid group.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePlanStore } from '../store/planStore';
 import { useUIStore } from '../store/uiStore';
@@ -194,6 +195,126 @@ function activePlan(): PlanDocument | undefined {
   return p.versions.find((v) => v.id === p.activeVersionId)?.plan;
 }
 
+/** does a world point land on any currently-selected item? Used to decide whether
+ *  a drag should move the whole selection as a group (vs. re-selecting one item). */
+function hitsSelection(
+  world: Point,
+  plan: PlanDocument,
+  vp: Viewport,
+  selWalls: Set<string>,
+  selOpenings: Set<string>,
+  selFurniture: Set<string>,
+): boolean {
+  const floor = plan.activeFloor;
+  for (const f of plan.furniture) {
+    if (f.floor !== floor) continue;
+    if (selFurniture.has(f.id) && pointInItem(world, f)) return true;
+  }
+  // a selected wall's line (also covers grabbing one of its end nodes)
+  const wallTol = WALL_HIT_PX / vp.scale;
+  for (const w of plan.walls) {
+    if (!selWalls.has(w.id)) continue;
+    const a = plan.nodes.find((n) => n.id === w.a);
+    const b = plan.nodes.find((n) => n.id === w.b);
+    if (!a || !b || a.floor !== floor) continue;
+    if (distPointToSegment(world, a, b) <= wallTol) return true;
+  }
+  // a selected opening's centre
+  const openTol = (CLICK_SNAP_PX * 1.6) / vp.scale;
+  for (const o of plan.openings) {
+    if (!selOpenings.has(o.id)) continue;
+    const w = plan.walls.find((x) => x.id === o.wallId);
+    if (!w) continue;
+    const a = plan.nodes.find((n) => n.id === w.a);
+    const b = plan.nodes.find((n) => n.id === w.b);
+    if (!a || !b || a.floor !== floor) continue;
+    const len = dist(a, b);
+    if (len === 0) continue;
+    const cx = a.x + ((b.x - a.x) * o.offset) / len;
+    const cy = a.y + ((b.y - a.y) * o.offset) / len;
+    if (dist(world, { x: cx, y: cy }) <= openTol) return true;
+  }
+  return false;
+}
+
+/** capture the start of a group drag: the pointer origin plus each affected
+ *  node's and furniture item's starting position (so moves stay rigid). */
+function buildGroupDrag(
+  plan: PlanDocument,
+  world: Point,
+  selW: string[],
+  selF: string[],
+): { start: Point; nodes: { id: string; x0: number; y0: number }[]; furniture: { id: string; x0: number; y0: number }[] } {
+  const wallSet = new Set(selW);
+  const nodeIds = new Set<string>();
+  for (const w of plan.walls) {
+    if (!wallSet.has(w.id)) continue;
+    nodeIds.add(w.a);
+    nodeIds.add(w.b);
+  }
+  const nodes = plan.nodes.filter((n) => nodeIds.has(n.id)).map((n) => ({ id: n.id, x0: n.x, y0: n.y }));
+  const furnSet = new Set(selF);
+  const furniture = plan.furniture.filter((f) => furnSet.has(f.id)).map((f) => ({ id: f.id, x0: f.x, y0: f.y }));
+  return { start: world, nodes, furniture };
+}
+
+/** world-space bounding box of the current selection (active floor), or null. */
+function selectionBounds(
+  plan: PlanDocument,
+  selWalls: Set<string>,
+  selOpenings: Set<string>,
+  selFurniture: Set<string>,
+): Rect | null {
+  const floor = plan.activeFloor;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let any = false;
+  const grow = (x: number, y: number) => {
+    any = true;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  };
+  for (const w of plan.walls) {
+    if (!selWalls.has(w.id)) continue;
+    for (const id of [w.a, w.b]) {
+      const n = plan.nodes.find((z) => z.id === id);
+      if (n && n.floor === floor) grow(n.x, n.y);
+    }
+  }
+  for (const f of plan.furniture) {
+    if (!selFurniture.has(f.id) || f.floor !== floor) continue;
+    const rad = (f.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const hw = f.w / 2;
+    const hh = f.h / 2;
+    for (const [sx, sy] of [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ] as const) {
+      grow(f.x + sx * cos - sy * sin, f.y + sx * sin + sy * cos);
+    }
+  }
+  for (const o of plan.openings) {
+    if (!selOpenings.has(o.id)) continue;
+    const w = plan.walls.find((x) => x.id === o.wallId);
+    if (!w) continue;
+    const a = plan.nodes.find((n) => n.id === w.a);
+    const b = plan.nodes.find((n) => n.id === w.b);
+    if (!a || !b || a.floor !== floor) continue;
+    const len = dist(a, b);
+    if (len === 0) continue;
+    grow(a.x + ((b.x - a.x) * o.offset) / len, a.y + ((b.y - a.y) * o.offset) / len);
+  }
+  return any ? { minX, minY, maxX, maxY } : null;
+}
+
 /** snap a screen point to the nearest node, then draft-start (for closing), then grid */
 function computeSnap(screen: Point, vp: Viewport, plan: PlanDocument, draft: Point[] | null): Point {
   const raw = screenToWorld(screen, vp);
@@ -226,6 +347,12 @@ export function Canvas() {
   const openingDrag = useRef<{ id: string } | null>(null);
   const furnitureDrag = useRef<{ id: string; gx: number; gy: number } | null>(null);
   const traceDrag = useRef<{ gx: number; gy: number } | null>(null);
+  // dragging a multi-selection as a group: pointer origin + each item's start pos
+  const groupDrag = useRef<{
+    start: Point;
+    nodes: { id: string; x0: number; y0: number }[];
+    furniture: { id: string; x0: number; y0: number }[];
+  } | null>(null);
   const spaceHeld = useRef(false);
 
   // last pointer position over the canvas (svg-relative screen px), for paste-at-mouse
@@ -269,6 +396,7 @@ export function Canvas() {
     addWallChain,
     deleteWalls,
     moveNode,
+    moveMany,
     setRoomName,
     addOpening,
     deleteOpenings,
@@ -308,15 +436,18 @@ export function Canvas() {
       const screen = screenPoint(e.clientX, e.clientY);
       pointerScreen.current = screen;
       const vp = useUIStore.getState().viewport;
+      const t = useUIStore.getState().tool;
 
-      // pan: middle button, or space + left
-      if (e.button === 1 || (e.button === 0 && spaceHeld.current)) {
+      // pan: middle button, or left button with the pan tool / space held / ⌘|Ctrl held
+      if (
+        e.button === 1 ||
+        (e.button === 0 && (t === 'pan' || spaceHeld.current || e.metaKey || e.ctrlKey))
+      ) {
         panning.current = { x: e.clientX, y: e.clientY };
         return;
       }
       if (e.button !== 0) return;
 
-      const t = useUIStore.getState().tool;
       const d = useUIStore.getState().draft;
 
       if (t === 'wall') {
@@ -359,6 +490,23 @@ export function Canvas() {
 
       // select tool
       const world = screenToWorld(screen, vp);
+
+      // group drag: grabbing any item of a multi-selection moves them all together
+      // (and keeps the selection intact, rather than re-selecting the one item)
+      const ui = useUIStore.getState();
+      const selW = ui.selectedWallIds;
+      const selO = ui.selectedOpeningIds;
+      const selF = ui.selectedFurnitureIds;
+      const multiSel = selW.length + selO.length + selF.length >= 2;
+      // grabbing a selected item moves the whole selection as a group
+      if (
+        multiSel &&
+        hitsSelection(world, p, vp, new Set(selW), new Set(selO), new Set(selF))
+      ) {
+        groupDrag.current = buildGroupDrag(p, world, selW, selF);
+        return;
+      }
+
       const nodeTol = CLICK_SNAP_PX / vp.scale;
       let hitNode: string | null = null;
       let bnd = nodeTol;
@@ -434,6 +582,15 @@ export function Canvas() {
         setSelectedOpenings([]);
         setSelectedFurniture([]);
         return;
+      }
+      // pressing inside a multi-selection's bounds (e.g. the hollow middle of a
+      // selected room) also moves the group — nothing else was hit here
+      if (multiSel) {
+        const b = selectionBounds(p, new Set(selW), new Set(selO), new Set(selF));
+        if (b && pointInRect(world, b)) {
+          groupDrag.current = buildGroupDrag(p, world, selW, selF);
+          return;
+        }
       }
       // trace image drag (lowest priority — only when nothing else was hit)
       const ti = p.traceImage;
@@ -511,6 +668,19 @@ export function Canvas() {
         moveTraceImage(world.x - traceDrag.current.gx, world.y - traceDrag.current.gy);
         return;
       }
+      if (groupDrag.current) {
+        const world = screenToWorld(screen, vp);
+        let dx = world.x - groupDrag.current.start.x;
+        let dy = world.y - groupDrag.current.start.y;
+        if (p.grid.snap) {
+          dx = Math.round(dx / p.grid.size) * p.grid.size;
+          dy = Math.round(dy / p.grid.size) * p.grid.size;
+        }
+        const nodes = groupDrag.current.nodes.map((n) => ({ id: n.id, x: n.x0 + dx, y: n.y0 + dy }));
+        const furniture = groupDrag.current.furniture.map((f) => ({ id: f.id, x: f.x0 + dx, y: f.y0 + dy }));
+        moveMany(nodes, furniture);
+        return;
+      }
       if (marqueeStart.current) {
         const world = screenToWorld(screen, vp);
         setMarquee(rectFromPoints(marqueeStart.current, world));
@@ -524,7 +694,7 @@ export function Canvas() {
       const d = useUIStore.getState().draft;
       setCursor(computeSnap(screen, vp, p, d));
     },
-    [screenPoint, panBy, moveNode, moveOpening, moveFurniture, moveTraceImage, setCursor, setMarquee],
+    [screenPoint, panBy, moveNode, moveMany, moveOpening, moveFurniture, moveTraceImage, setCursor, setMarquee],
   );
 
   const onPointerUp = useCallback(
@@ -547,6 +717,7 @@ export function Canvas() {
       openingDrag.current = null;
       furnitureDrag.current = null;
       traceDrag.current = null;
+      groupDrag.current = null;
       try {
         svgRef.current?.releasePointerCapture(e.pointerId);
       } catch {
@@ -635,6 +806,10 @@ export function Canvas() {
       }
       if (e.key === 'w' || e.key === 'W') {
         useUIStore.getState().setTool('wall');
+        return;
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        useUIStore.getState().setTool('pan');
         return;
       }
       if (e.key === 'r' || e.key === 'R') {
@@ -850,7 +1025,7 @@ export function Canvas() {
         ref={svgRef}
         width={size.w}
         height={size.h}
-        className={`canvas ${tool === 'wall' ? 'tool-wall' : ''}`}
+        className={`canvas ${tool === 'wall' ? 'tool-wall' : ''} ${tool === 'pan' ? 'tool-pan' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
